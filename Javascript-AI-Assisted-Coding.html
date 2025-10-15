@@ -10,7 +10,7 @@
 		.info{width:800px;margin:8px auto;text-align:center;font-size:14px;color:#bbb}
 		button{margin-left:8px}
 		/* debug overlay */
-		#debugOverlay{position:fixed;right:8px;top:8px;width:360px;max-height:50vh;overflow:auto;background:rgba(0,0,0,0.85);color:#0f0;padding:8px;border:1px solid #333;font-family:monospace;font-size:12px;z-index:9999}
+		#debugOverlay{position:fixed;right:8px;top:8px;width:360px;max-height:50vh;overflow:auto;background:rgba(0,0,0,0.85);color:#0f0;padding:8px;border:1px solid #333;font-family:monospace;font-size:12px;z-index:9999;pointer-events:none}
 		#toggleDebug{position:fixed;right:8px;top:calc(8px + 50vh + 12px);z-index:10000}
 	</style>
 </head>
@@ -55,13 +55,39 @@
 			ensureDebugOverlay();
 			const el = document.getElementById('debugOverlay');
 			if (!el) return;
-			const row = document.createElement('div');
-			row.textContent = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
-			el.appendChild(row);
+		const row = document.createElement('div');
+		row.textContent = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+		el.appendChild(row);
 			// keep overlay trimmed
 			while (el.childElementCount > 80) el.removeChild(el.firstChild);
 		}catch(e){}
 	}
+
+	// make overlay non-blocking but allow the toggle button to receive clicks
+	(function enableToggleClicks(){
+		const t = () => {
+			const btn = document.getElementById('toggleDebug');
+			if (btn) { btn.style.pointerEvents = 'auto'; }
+			const el = document.getElementById('debugOverlay');
+			if (el) { el.style.pointerEvents = 'none'; }
+		};
+		setTimeout(t, 300);
+		window.addEventListener('load', t);
+	})();
+
+	// Global click logger to diagnose unresponsive buttons
+	document.addEventListener('click', (e)=>{ try{ debugLog('[CLICK] target=', e.target.id || e.target.tagName, 'class=', e.target.className || ''); }catch(err){} });
+
+	// Ensure the UI buttons have handlers (re-attach safely)
+	function attachUiHandlers(){
+		const r = document.getElementById('restart');
+		if (r) r.addEventListener('click', ()=>{ debugLog('[ACTION] restart click'); gameState = 'playing'; lives = 3; score = 0; currentLevel = 0; totalTime = 0; totalCollected = 0; lastVictoryNewHigh = false; loadLevel(currentLevel); if (player){ player.vx = player.vy = 0; } });
+		const p = document.getElementById('prevLevel');
+		if (p) p.addEventListener('click', ()=>{ debugLog('[ACTION] prevLevel click'); if (gameState !== 'playing') gameState = 'playing'; currentLevel = Math.max(0,currentLevel-1); loadLevel(currentLevel); });
+		const n = document.getElementById('nextLevel');
+		if (n) n.addEventListener('click', ()=>{ debugLog('[ACTION] nextLevel click'); if (gameState !== 'playing') gameState = 'playing'; currentLevel = Math.min(levels.length-1,currentLevel+1); loadLevel(currentLevel); });
+	}
+	setTimeout(attachUiHandlers, 100);
 
 	document.getElementById('restart').addEventListener('click', ()=>{
 		// full reset
