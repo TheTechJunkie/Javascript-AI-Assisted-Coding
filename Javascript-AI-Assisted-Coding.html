@@ -7,8 +7,9 @@
 	<style>
 		html,body{height:100%;margin:0;background:#222;color:#eee;font-family:system-ui,-apple-system,Segoe UI,Roboto}
 		#game {display:block;margin:20px auto;border:4px solid #444;background:#111;}
-		.info{width:800px;margin:8px auto;text-align:center;font-size:14px;color:#bbb}
+		.info{width:800px;margin:8px auto;text-align:center;font-size:14px;color:#bbb;position:relative;z-index:10001}
 		button{margin-left:8px}
+		button{pointer-events:auto}
 		/* debug overlay */
 		#debugOverlay{position:fixed;right:8px;top:8px;width:360px;max-height:50vh;overflow:auto;background:rgba(0,0,0,0.85);color:#0f0;padding:8px;border:1px solid #333;font-family:monospace;font-size:12px;z-index:9999;pointer-events:none}
 		#toggleDebug{position:fixed;right:8px;top:calc(8px + 50vh + 12px);z-index:10000}
@@ -246,40 +247,29 @@ window.addEventListener('unhandledrejection', (ev) => {
 		// Gravity
 		player.vy += gravity;
 
-		// Apply velocity
+		// Apply horizontal movement and resolve X collisions
 		player.x += player.vx;
+		for (const p of platforms){
+			if (_debugPhysicsFrames > 0){ debugLog('[DEBUG] check platform X', p.x,p.y,p.w,p.h); }
+			if (player.x < p.x + p.w && player.x + player.w > p.x && player.y < p.y + p.h && player.y + player.h > p.y){
+				// overlap on X axis
+				if (player.vx > 0){ // moving right
+					player.x = p.x - player.w; player.vx = 0;
+				} else if (player.vx < 0){ // moving left
+					player.x = p.x + p.w; player.vx = 0;
+				}
+			}
+		}
+		// Apply vertical movement and resolve Y collisions
 		player.y += player.vy;
-
-		// Collision with platforms (AABB, simple resolution)
 		player.onGround = false;
 		for (const p of platforms){
-			if (_debugPhysicsFrames > 0){
-				const overlap = rectsOverlap(player,p);
-				debugLog('[DEBUG] check platform', p.x,p.y,p.w,p.h,'overlap=',overlap);
-			}
-			if (rectsOverlap(player,p)){
-				// Determine overlap directions
-				const pxCenter = p.x + p.w/2, pyCenter = p.y + p.h/2;
-				const dx = (player.x + player.w/2) - pxCenter;
-				const dy = (player.y + player.h/2) - pyCenter;
-				const px = (p.w + player.w)/2, py = (p.h + player.h)/2;
-				const wy = px * dy, hx = py * dx;
-				if (wy > hx){
-					if (wy > -hx){
-						// top
-						player.y = p.y - player.h; player.vy = 0; player.onGround = true;
-					} else {
-						// left
-						player.x = p.x - player.w; player.vx = 0;
-					}
-				} else {
-					if (wy > -hx){
-						// right
-						player.x = p.x + p.w; player.vx = 0;
-					} else {
-						// bottom
-						player.y = p.y + p.h; player.vy = 0;
-					}
+			if (_debugPhysicsFrames > 0){ debugLog('[DEBUG] check platform Y', p.x,p.y,p.w,p.h); }
+			if (player.x < p.x + p.w && player.x + player.w > p.x && player.y < p.y + p.h && player.y + player.h > p.y){
+				if (player.vy > 0){ // falling -> landed on top
+					player.y = p.y - player.h; player.vy = 0; player.onGround = true;
+				} else if (player.vy < 0){ // moving up -> hit bottom
+					player.y = p.y + p.h; player.vy = 0;
 				}
 			}
 		}
