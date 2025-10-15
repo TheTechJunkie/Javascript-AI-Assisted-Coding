@@ -15,6 +15,7 @@
 		<div class="info">Use ← → to move, ↑ / W / Space to jump. Gamepad supported (no touch). Reach the green flag to win. <button id="restart">Restart</button>
 			<button id="prevLevel">Prev Level</button>
 			<button id="nextLevel">Next Level</button>
+			<button id="clearHigh">Clear High Score</button>
 		</div>
 	<canvas id="game" width="800" height="450" aria-label="Platformer game"></canvas>
 
@@ -35,7 +36,13 @@
 	window.addEventListener('gamepadconnected', (e)=>{ gpConnected = true; gpIndex = e.gamepad.index; console.log('Gamepad connected', e.gamepad); });
 	window.addEventListener('gamepaddisconnected', (e)=>{ gpConnected = false; gpIndex = null; console.log('Gamepad disconnected'); });
 
-	document.getElementById('restart').addEventListener('click', ()=>init());
+	document.getElementById('restart').addEventListener('click', ()=>{
+		// full reset
+		gameState = 'playing'; lives = 3; score = 0; currentLevel = 0; totalTime = 0; totalCollected = 0; lastVictoryNewHigh = false;
+		loadLevel(currentLevel);
+		// ensure player exists and is placed
+		if (player){ player.vx = player.vy = 0; }
+	});
 
 		// World
 		let player, platforms, flag, gravity = 0.6;
@@ -43,10 +50,29 @@
 		let enemies = [];
 		let particles = [];
 		let score = 0, lives = 3;
+		let gameState = 'playing'; // 'playing', 'gameover', 'victory'
+		let highScore = 0;
+		let levelStartTime = 0;
+		let totalTime = 0; // accumulates across levels (ms)
+		let collectedCount = 0; // per-level collected
+		let totalCollected = 0; // across all levels
+		let levelCollectiblesTotal = 0;
+		let totalCollectiblesAll = 0;
+		let lastVictoryNewHigh = false;
+		let levelBests = {}; // { levelIndex: {score: number, timeMs: number} }
+
+		function loadLevelBests(){
+			try{ levelBests = JSON.parse(localStorage.getItem('platformer_level_bests')||'{}'); } catch(e){ levelBests = {}; }
+		}
+
+		function saveLevelBests(){
+			try{ localStorage.setItem('platformer_level_bests', JSON.stringify(levelBests)); } catch(e){}
+		}
 
 		// Levels
 		const levels = [
 			{
+				start: {x: 50, y: 300},
 				platforms: [
 					{x:0,y:400,w:1200,h:50},
 					{x:200,y:330,w:120,h:16},
@@ -60,6 +86,7 @@
 				enemies: [ {x:500,y:250,range:[420,560],dir:1} ]
 			},
 			{
+				start: {x: 80, y: 360},
 				platforms: [
 					{x:0,y:420,w:1600,h:50},
 					{x:140,y:350,w:120,h:16},
@@ -93,7 +120,24 @@
 			collectibles = lvl.collectibles.map(c=>({x:c.x,y:c.y,w:12,h:12,collected:false}));
 			enemies = lvl.enemies.map(e=>({x:e.x,y:e.y,w:28,h:28,range:e.range,dir:e.dir,spd:1.2}));
 			world.width = Math.max(1600, (flag.x + 300));
-			score = 0;
+			// Place player at the level's start position (if defined) and reset velocity
+			if (player){
+				player.x = (lvl.start && typeof lvl.start.x === 'number') ? lvl.start.x : player.x;
+				player.y = (lvl.start && typeof lvl.start.y === 'number') ? lvl.start.y : player.y;
+				player.vx = 0; player.vy = 0;
+			}
+			// reset per-level timer and collectible counters
+			levelStartTime = performance.now();
+			collectedCount = 0;
+			levelCollectiblesTotal = collectibles.length;
+			// load per-level bests
+			loadLevelBests();
+			const best = levelBests[n];
+			// best may be undefined; leave UI to handle that
+			// recompute overall collectible total
+			totalCollectiblesAll = levels.reduce((s,l)=>s + (l.collectibles ? l.collectibles.length : 0), 0);
+			// load high score from storage
+			try{ highScore = Number(localStorage.getItem('platformer_high')) || 0; } catch(e){ highScore = 0; }
 		}
 
 	function rectsOverlap(a,b){
@@ -101,6 +145,7 @@
 	}
 
 	function physics(dt){
+		if (gameState !== 'playing') return false;
 		// Horizontal movement
 		const accel = 0.8, maxSpeed = 5, friction = 0.75;
 		// Keyboard
@@ -181,7 +226,7 @@
 			// Collectibles
 			for (const c of collectibles){
 				if (!c.collected && rectsOverlap(player,c)){
-					c.collected = true; score += 100; spawnParticles(c.x+6,c.y+6,'gold');
+					c.collected = true; score += 100; collectedCount += 1; totalCollected += 1; spawnParticles(c.x+6,c.y+6,'gold');
 				}
 			}
 
@@ -284,9 +329,48 @@
 			ctx.fillText('Position: ' + Math.round(player.x) + ',' + Math.round(player.y), 8, 20);
 			ctx.fillText('Camera: ' + Math.round(camera.sx) + ',' + Math.round(camera.sy), 8, 40);
 			ctx.fillText('Gamepad: ' + (gpConnected ? 'connected' : 'none'), 8, 60);
-			ctx.fillText('Score: ' + score, W - 140, 20);
-			ctx.fillText('Lives: ' + lives, W - 140, 40);
-			ctx.fillText('Level: ' + (currentLevel+1) + '/' + levels.length, W - 140, 60);
+			ctx.fillText('Score: ' + score, W - 260, 20);
+			ctx.fillText('High: ' + highScore, W - 160, 20);
+			// show per-level best if available
+			const lb = levelBests[currentLevel];
+			if (lb){
+				ctx.fillText('Level best: ' + lb.score + ' @ ' + Math.round(lb.timeMs/1000) + 's', W - 500, 20);
+			}
+			ctx.fillText('Lives: ' + lives, W - 220, 40);
+			ctx.fillText('Level: ' + (currentLevel+1) + '/' + levels.length, W - 140, 40);
+			ctx.fillText('Collected: ' + collectedCount + '/' + levelCollectiblesTotal + ' (Total ' + totalCollected + '/' + totalCollectiblesAll +')', 8, H - 10);
+
+			// Overlays
+			if (gameState === 'gameover'){
+				ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(0,0,W,H);
+				ctx.fillStyle = '#fff'; ctx.font='36px sans-serif'; ctx.textAlign='center';
+				ctx.fillText('Game Over', W/2, H/2);
+			}
+			if (gameState === 'victory'){
+				ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0,0,W,H);
+				ctx.fillStyle = '#fff'; ctx.font='36px sans-serif'; ctx.textAlign='center';
+				ctx.fillText('Victory!', W/2, H/2 - 60);
+				ctx.font='18px sans-serif';
+				// show time and collected
+				const secs = Math.round(totalTime/1000);
+				ctx.fillText('Total time: ' + secs + 's    Score: ' + score + '    High: ' + highScore, W/2, H/2 - 20);
+				ctx.fillText('Collected: ' + totalCollected + ' / ' + totalCollectiblesAll, W/2, H/2 + 6);
+				if (lastVictoryNewHigh) ctx.fillText('New High Score! 🎉', W/2, H/2 + 40);
+				ctx.fillText('Per-level bests:', W/2, H/2 + 72);
+				ctx.font='14px sans-serif';
+				let y = H/2 + 96;
+				for (let i=0;i<levels.length;i++){
+					const b = levelBests[i];
+					if (b){
+						ctx.fillText('Level ' + (i+1) + ': ' + b.score + ' pts @ ' + Math.round(b.timeMs/1000) + 's', W/2, y);
+					} else {
+						ctx.fillText('Level ' + (i+1) + ': -', W/2, y);
+					}
+					y += 20;
+				}
+				ctx.font='18px sans-serif';
+				ctx.fillText('Refresh or click Restart to play again.', W/2, y + 8);
+			}
 	}
 
 	let last = 0;
@@ -302,22 +386,57 @@
 	init();
 
 	// UI buttons
-	document.getElementById('prevLevel').addEventListener('click', ()=>{ currentLevel = Math.max(0,currentLevel-1); loadLevel(currentLevel); });
-	document.getElementById('nextLevel').addEventListener('click', ()=>{ currentLevel = Math.min(levels.length-1,currentLevel+1); loadLevel(currentLevel); });
+	document.getElementById('prevLevel').addEventListener('click', ()=>{ 
+		if (gameState !== 'playing') gameState = 'playing';
+		currentLevel = Math.max(0,currentLevel-1); loadLevel(currentLevel);
+	});
+	document.getElementById('nextLevel').addEventListener('click', ()=>{ 
+		if (gameState !== 'playing') gameState = 'playing';
+		currentLevel = Math.min(levels.length-1,currentLevel+1); loadLevel(currentLevel);
+	});
+	document.getElementById('clearHigh').addEventListener('click', ()=>{
+		try{ localStorage.removeItem('platformer_high'); highScore = 0; } catch(e){}
+	});
 
 	function nextLevel(){
-		currentLevel = Math.min(levels.length-1, currentLevel+1);
-		if (currentLevel < levels.length) loadLevel(currentLevel);
+		// accumulate time for this level and update per-level best
+		const now = performance.now();
+		const elapsed = Math.max(0, now - levelStartTime || 0);
+		totalTime += elapsed;
+		// record per-level best for the level we just finished (currentLevel)
+		try{
+			const prev = levelBests[currentLevel] || null;
+			const candidate = { score: score, timeMs: elapsed };
+			let shouldReplace = false;
+			if (!prev) shouldReplace = true;
+			else if (candidate.score > prev.score) shouldReplace = true;
+			else if (candidate.score === prev.score && candidate.timeMs < prev.timeMs) shouldReplace = true;
+			if (shouldReplace){ levelBests[currentLevel] = candidate; saveLevelBests(); }
+		} catch(e){}
+		// advance
+		currentLevel = currentLevel + 1;
+		if (currentLevel >= levels.length){
+			// finished last level -> victory summary
+			gameState = 'victory';
+			// check/persist high score
+			try{
+				if (score > highScore){
+					highScore = score; localStorage.setItem('platformer_high', String(highScore)); lastVictoryNewHigh = true;
+				} else lastVictoryNewHigh = false;
+			} catch(e){ /* storage not available */ }
+			return;
+		}
+		currentLevel = Math.min(levels.length-1, currentLevel);
+		loadLevel(currentLevel);
 	}
 
 	function loseLife(){
 		lives -= 1;
 		if (lives <= 0){
 			// game over
-			ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H); ctx.fillStyle = '#fff'; ctx.font='36px sans-serif'; ctx.textAlign='center';
-			ctx.fillText('Game Over', W/2,H/2);
-			// reset game
-			setTimeout(()=>{ lives = 3; score = 0; currentLevel = 0; loadLevel(currentLevel); }, 1200);
+			gameState = 'gameover';
+			// show game over briefly then reset
+			setTimeout(()=>{ gameState = 'playing'; lives = 3; score = 0; currentLevel = 0; loadLevel(currentLevel); }, 1200);
 		} else {
 			// respawn
 			player.x = 50; player.y = 300; player.vx = player.vy = 0;
