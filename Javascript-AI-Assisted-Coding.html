@@ -90,13 +90,13 @@ window.addEventListener('unhandledrejection', (ev) => {
 	// Ensure the UI buttons have handlers (re-attach safely)
 	function attachUiHandlers(){
 		const r = document.getElementById('restart');
-		if (r) r.addEventListener('click', ()=>{ debugLog('[ACTION] restart click'); gameState = 'playing'; lives = 3; score = 0; currentLevel = 0; totalTime = 0; totalCollected = 0; lastVictoryNewHigh = false; loadLevel(currentLevel); if (player){ player.vx = player.vy = 0; } });
+		if (r) r.addEventListener('click', ()=>{ debugLog('[ACTION] restart click'); gameState = 'playing'; lives = 3; score = 0; currentLevel = 0; totalTime = 0; totalCollected = 0; lastVictoryNewHigh = false; loadLevel(currentLevel); if (player){ player.vx = player.vy = 0; } ensureLoop(); });
 		if (r){ r.style.border = '2px solid #0f0'; r.title = 'handler attached'; }
 		const p = document.getElementById('prevLevel');
-		if (p) p.addEventListener('click', ()=>{ debugLog('[ACTION] prevLevel click'); if (gameState !== 'playing') gameState = 'playing'; currentLevel = Math.max(0,currentLevel-1); loadLevel(currentLevel); });
+		if (p) p.addEventListener('click', ()=>{ debugLog('[ACTION] prevLevel click'); if (gameState !== 'playing') gameState = 'playing'; currentLevel = Math.max(0,currentLevel-1); loadLevel(currentLevel); ensureLoop(); });
 		if (p){ p.style.border = '2px solid #0f0'; p.title = 'handler attached'; }
 		const n = document.getElementById('nextLevel');
-		if (n) n.addEventListener('click', ()=>{ debugLog('[ACTION] nextLevel click'); if (gameState !== 'playing') gameState = 'playing'; currentLevel = Math.min(levels.length-1,currentLevel+1); loadLevel(currentLevel); });
+		if (n) n.addEventListener('click', ()=>{ debugLog('[ACTION] nextLevel click'); if (gameState !== 'playing') gameState = 'playing'; currentLevel = Math.min(levels.length-1,currentLevel+1); loadLevel(currentLevel); ensureLoop(); });
 		if (n){ n.style.border = '2px solid #0f0'; n.title = 'handler attached'; }
 	}
 	setTimeout(attachUiHandlers, 100);
@@ -107,6 +107,7 @@ window.addEventListener('unhandledrejection', (ev) => {
 		loadLevel(currentLevel);
 		// ensure player exists and is placed
 		if (player){ player.vx = player.vy = 0; }
+		ensureLoop();
 	});
 
 		// World
@@ -448,12 +449,28 @@ window.addEventListener('unhandledrejection', (ev) => {
 	}
 
 	let last = 0;
+	// track whether the RAF loop is currently running so UI can re-start it when needed
+	let animationRunning = false;
+
+	function ensureLoop(){
+		if (!animationRunning){
+			last = performance.now();
+			requestAnimationFrame(loop);
+		}
+	}
+
 	function loop(ts){
+		animationRunning = true;
 		if (!ts) ts = performance.now();
 		const dt = Math.min(32, ts - last); last = ts;
 		const keepGoing = physics(dt);
 		draw();
-		if (keepGoing) requestAnimationFrame(loop);
+		if (keepGoing) {
+			requestAnimationFrame(loop);
+		} else {
+			// stop the loop until UI or game logic restarts it
+			animationRunning = false;
+		}
 	}
 
 	// Start (wrap so we can capture synchronous exceptions)
@@ -510,7 +527,7 @@ window.addEventListener('unhandledrejection', (ev) => {
 			// game over
 			gameState = 'gameover';
 			// show game over briefly then reset
-			setTimeout(()=>{ gameState = 'playing'; lives = 3; score = 0; currentLevel = 0; loadLevel(currentLevel); }, 1200);
+			setTimeout(()=>{ gameState = 'playing'; lives = 3; score = 0; currentLevel = 0; loadLevel(currentLevel); ensureLoop(); }, 1200);
 		} else {
 			// respawn
 			player.x = 50; player.y = 300; player.vx = player.vy = 0;
