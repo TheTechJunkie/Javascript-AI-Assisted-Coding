@@ -28,6 +28,14 @@
 	const ctx = canvas.getContext('2d');
 	const W = canvas.width, H = canvas.height;
 
+// Global error capture so errors surface in the on-page debug overlay
+window.addEventListener('error', (ev) => {
+    try{ ensureDebugOverlay(); debugLog('[ERROR]', ev.message, ev.filename + ':' + ev.lineno); } catch(e){}
+});
+window.addEventListener('unhandledrejection', (ev) => {
+    try{ ensureDebugOverlay(); debugLog('[UNHANDLED PROMISE]', ev.reason); } catch(e){}
+});
+
 	// Input
 	const keys = {};
 	window.addEventListener('keydown', e=>{ keys[e.code]=true; e.preventDefault(); });
@@ -458,8 +466,8 @@
 		if (keepGoing) requestAnimationFrame(loop);
 	}
 
-	// Start
-	init();
+	// Start (wrap so we can capture synchronous exceptions)
+	try{ init(); } catch(e){ ensureDebugOverlay(); debugLog('[ERROR] init threw:', e && (e.stack || e.message || String(e))); }
 
 	// UI buttons
 	document.getElementById('prevLevel').addEventListener('click', ()=>{ 
