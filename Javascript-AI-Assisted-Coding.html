@@ -82,10 +82,13 @@
 	function attachUiHandlers(){
 		const r = document.getElementById('restart');
 		if (r) r.addEventListener('click', ()=>{ debugLog('[ACTION] restart click'); gameState = 'playing'; lives = 3; score = 0; currentLevel = 0; totalTime = 0; totalCollected = 0; lastVictoryNewHigh = false; loadLevel(currentLevel); if (player){ player.vx = player.vy = 0; } });
+		if (r){ r.style.border = '2px solid #0f0'; r.title = 'handler attached'; }
 		const p = document.getElementById('prevLevel');
 		if (p) p.addEventListener('click', ()=>{ debugLog('[ACTION] prevLevel click'); if (gameState !== 'playing') gameState = 'playing'; currentLevel = Math.max(0,currentLevel-1); loadLevel(currentLevel); });
+		if (p){ p.style.border = '2px solid #0f0'; p.title = 'handler attached'; }
 		const n = document.getElementById('nextLevel');
 		if (n) n.addEventListener('click', ()=>{ debugLog('[ACTION] nextLevel click'); if (gameState !== 'playing') gameState = 'playing'; currentLevel = Math.min(levels.length-1,currentLevel+1); loadLevel(currentLevel); });
+		if (n){ n.style.border = '2px solid #0f0'; n.title = 'handler attached'; }
 	}
 	setTimeout(attachUiHandlers, 100);
 
@@ -352,7 +355,13 @@
 			ctx.save();
 			ctx.translate(-camera.sx, -camera.sy);
 			for (const p of platforms){
-				ctx.fillStyle = '#555'; ctx.fillRect(p.x, p.y, p.w, p.h);
+				// visual debug: highlight if overlapping player
+				if (rectsOverlap(player,p)){
+					ctx.fillStyle = '#4caf50';
+				} else {
+					ctx.fillStyle = '#555';
+				}
+				ctx.fillRect(p.x, p.y, p.w, p.h);
 				ctx.strokeStyle = '#222'; ctx.strokeRect(p.x, p.y, p.w, p.h);
 			}
 
@@ -378,6 +387,9 @@
 			// eyes
 			ctx.fillStyle = '#000'; ctx.fillRect(player.x + 6, player.y + 10, 4,4);
 			ctx.fillRect(player.x + player.w - 10, player.y + 10, 4,4);
+			// player debug bbox
+			ctx.strokeStyle = player.onGround ? '#0f0' : '#f00';
+			ctx.lineWidth = 2; ctx.strokeRect(player.x, player.y, player.w, player.h);
 			ctx.restore();
 
 			// Particles (screen space, but spawned in world coords converted here)
