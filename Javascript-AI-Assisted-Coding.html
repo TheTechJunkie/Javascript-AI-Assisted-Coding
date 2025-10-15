@@ -60,6 +60,7 @@
 		let totalCollectiblesAll = 0;
 		let lastVictoryNewHigh = false;
 		let levelBests = {}; // { levelIndex: {score: number, timeMs: number} }
+		let _debugPhysicsFrames = 6; // show a few frame logs to help debug
 
 		function loadLevelBests(){
 			try{ levelBests = JSON.parse(localStorage.getItem('platformer_level_bests')||'{}'); } catch(e){ levelBests = {}; }
@@ -134,6 +135,8 @@
 			loadLevelBests();
 			const best = levelBests[n];
 			// best may be undefined; leave UI to handle that
+			// Debug: print platforms so we can verify they exist and positions are correct
+			try{ console.log('[DEBUG] loadLevel', n, 'platforms=', platforms.length, platforms.slice(0,3)); } catch(e){}
 			// recompute overall collectible total
 			totalCollectiblesAll = levels.reduce((s,l)=>s + (l.collectibles ? l.collectibles.length : 0), 0);
 			// load high score from storage
@@ -146,6 +149,9 @@
 
 	function physics(dt){
 		if (gameState !== 'playing') return false;
+		if (_debugPhysicsFrames > 0){
+			console.log('[DEBUG] physics frame, player=', Math.round(player.x), Math.round(player.y), 'vx=', player.vx.toFixed(2), 'vy=', player.vy.toFixed(2));
+		}
 		// Horizontal movement
 		const accel = 0.8, maxSpeed = 5, friction = 0.75;
 		// Keyboard
@@ -183,6 +189,10 @@
 		// Collision with platforms (AABB, simple resolution)
 		player.onGround = false;
 		for (const p of platforms){
+			if (_debugPhysicsFrames > 0){
+				const overlap = rectsOverlap(player,p);
+				console.log('[DEBUG] check platform', p.x,p.y,p.w,p.h,'overlap=',overlap);
+			}
 			if (rectsOverlap(player,p)){
 				// Determine overlap directions
 				const pxCenter = p.x + p.w/2, pyCenter = p.y + p.h/2;
@@ -239,7 +249,8 @@
 					hitEnemy(e);
 				}
 			}
-
+			// decrement debug frame counter to limit logging
+			if (_debugPhysicsFrames > 0) _debugPhysicsFrames -= 1;
 		return true;
 	}
 
